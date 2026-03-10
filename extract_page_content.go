@@ -38,5 +38,48 @@ func getFirstParagraphFromHTML(html string) string {
 }
 
 func getURLsFromHTML(htmlBody string, baseURL *url.URL) ([]string, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlBody))
+	if err != nil {
+		return nil, err
+	}
+	urls := []string{}
+	doc.Find("a[href]").Each(func(_ int, s *goquery.Selection) {
+		href, exists := s.Attr("href")
+		if !exists {
+			return
+		}
+		u, _ := url.Parse(href)
+		if u.Scheme != "" && u.Host != "" {
+			urls = append(urls, href)
+		} else {
+			baseURL.Path = href
+			href = baseURL.String()
+			urls = append(urls, href)
+		}
+	})
+	return urls, nil
+}
+
+func getImagesFromHTML(htmlBody string, baseURL *url.URL) ([]string, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlBody))
+	if err != nil {
+		return nil, err
+	}
+	urls := []string{}
+	doc.Find("img[src]").Each(func(_ int, s *goquery.Selection) {
+		src, exists := s.Attr("src")
+		if !exists {
+			return
+		}
+		u, _ := url.Parse(src)
+		if u.Scheme != "" && u.Host != "" {
+			urls = append(urls, src)
+		} else {
+			baseURL.Path = src
+			src = baseURL.String()
+			urls = append(urls, src)
+		}
+	})
+	return urls, nil
 
 }

@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"net/url"
+	"reflect"
+	"testing"
+)
 
 func TestGetHeadingFromHTML(t *testing.T) {
 	tests := []struct {
@@ -134,6 +138,193 @@ func TestGetFirstParagraphFromHTML(t *testing.T) {
 			actual := getFirstParagraphFromHTML(tc.inputHTML)
 			if actual != tc.expected {
 				t.Errorf("Test %v - %s FAIL: expected URL: %v, actual: %v", i, tc.name, tc.expected, actual)
+			}
+		})
+	}
+}
+
+func TestGetURLsFromHTMLAbsolute(t *testing.T) {
+	inputURL := "https://crawler-test.com"
+
+	baseURL, err := url.Parse(inputURL)
+	if err != nil {
+		t.Fatalf("couldn't parse input URL: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		inputHTML string
+		expected  []string
+	}{
+		{
+			name: "single absolute link",
+			inputHTML: `<html><body>
+				<a href="https://crawler-test.com">Boot.dev</a>
+			</body></html>`,
+			expected: []string{"https://crawler-test.com"},
+		},
+		{
+			name: "multiple absolute links",
+			inputHTML: `<html><body>
+				<a href="https://crawler-test.com/page1">Page1</a>
+				<a href="https://crawler-test.com/page2">Page2</a>
+			</body></html>`,
+			expected: []string{
+				"https://crawler-test.com/page1",
+				"https://crawler-test.com/page2",
+			},
+		},
+		{
+			name: "relative link",
+			inputHTML: `<html><body>
+				<a href="/about">About</a>
+			</body></html>`,
+			expected: []string{
+				"https://crawler-test.com/about",
+			},
+		},
+		{
+			name: "mixed relative and absolute",
+			inputHTML: `<html><body>
+				<a href="/about">About</a>
+				<a href="https://blog.boot.dev">Blog</a>
+			</body></html>`,
+			expected: []string{
+				"https://crawler-test.com/about",
+				"https://blog.boot.dev",
+			},
+		},
+		{
+			name: "no href attribute",
+			inputHTML: `<html><body>
+				<a>Broken link</a>
+			</body></html>`,
+			expected: []string{},
+		},
+		{
+			name: "nested element inside anchor",
+			inputHTML: `<html><body>
+				<a href="https://crawler-test.com">
+					<span>Boot.dev</span>
+				</a>
+			</body></html>`,
+			expected: []string{
+				"https://crawler-test.com",
+			},
+		},
+		{
+			name: "duplicate links",
+			inputHTML: `<html><body>
+				<a href="/about">About</a>
+				<a href="/about">About again</a>
+			</body></html>`,
+			expected: []string{
+				"https://crawler-test.com/about",
+				"https://crawler-test.com/about",
+			},
+		},
+		{
+			name:      "empty html",
+			inputHTML: `<html><body></body></html>`,
+			expected:  []string{},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := getURLsFromHTML(tc.inputHTML, baseURL)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !reflect.DeepEqual(actual, tc.expected) {
+				t.Errorf("expected %v, got %v", tc.expected, actual)
+			}
+		})
+	}
+}
+
+func TestGetImagesFromHTML(t *testing.T) {
+	inputURL := "https://crawler-test.com"
+
+	baseURL, err := url.Parse(inputURL)
+	if err != nil {
+		t.Fatalf("couldn't parse input URL: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		inputHTML string
+		expected  []string
+	}{
+		{
+			name: "relative image",
+			inputHTML: `<html><body>
+				<img src="/logo.png" alt="Logo">
+			</body></html>`,
+			expected: []string{
+				"https://crawler-test.com/logo.png",
+			},
+		},
+		{
+			name: "absolute image",
+			inputHTML: `<html><body>
+				<img src="https://cdn.crawler-test.com/logo.png">
+			</body></html>`,
+			expected: []string{
+				"https://cdn.crawler-test.com/logo.png",
+			},
+		},
+		{
+			name: "multiple images",
+			inputHTML: `<html><body>
+				<img src="/logo.png">
+				<img src="/banner.png">
+			</body></html>`,
+			expected: []string{
+				"https://crawler-test.com/logo.png",
+				"https://crawler-test.com/banner.png",
+			},
+		},
+		{
+			name: "mixed relative and absolute",
+			inputHTML: `<html><body>
+				<img src="/logo.png">
+				<img src="https://cdn.crawler-test.com/banner.png">
+			</body></html>`,
+			expected: []string{
+				"https://crawler-test.com/logo.png",
+				"https://cdn.crawler-test.com/banner.png",
+			},
+		},
+		{
+			name: "missing src attribute",
+			inputHTML: `<html><body>
+				<img alt="logo">
+			</body></html>`,
+			expected: []string{},
+		},
+		{
+			name: "no images",
+			inputHTML: `<html><body>
+				<h1>Hello</h1>
+				<p>No images here</p>
+			</body></html>`,
+			expected: []string{},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			actual, err := getImagesFromHTML(tc.inputHTML, baseURL)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if !reflect.DeepEqual(actual, tc.expected) {
+				t.Errorf("expected %v, got %v", tc.expected, actual)
 			}
 		})
 	}
