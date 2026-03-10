@@ -4,27 +4,57 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
 func main() {
-	args := os.Args[1:]
-	if len(args) < 1 {
-		fmt.Printf("no website provided")
+	if len(os.Args) < 2 {
+		fmt.Println("no website provided")
 		os.Exit(1)
-	} else if len(args) > 1 {
-		fmt.Printf("too many arguments provided")
-		os.Exit(1)
-	} else {
-		fmt.Printf("starting crawl of: %s", args[0])
 	}
-	pages := make(map[string]int)
-	crawlPage(args[0], args[0], pages)
-	for normalizedURL, count := range pages {
-		fmt.Printf("%d - %s\n", count, normalizedURL)
+
+	rawBaseURL := os.Args[1]
+	// default values
+	maxConcurrency := 5
+	maxPages := 50
+
+	// optional arg: maxConcurrency
+	if len(os.Args) >= 3 {
+		val, err := strconv.Atoi(os.Args[2])
+		if err != nil {
+			fmt.Println("invalid maxConcurrency value")
+			os.Exit(1)
+		}
+		maxConcurrency = val
 	}
+
+	// optional arg: maxPages
+	if len(os.Args) >= 4 {
+		val, err := strconv.Atoi(os.Args[3])
+		if err != nil {
+			fmt.Println("invalid maxPages value")
+			os.Exit(1)
+		}
+		maxPages = val
+	}
+	cfg, err := configure(rawBaseURL, maxConcurrency, maxPages)
+	if err != nil {
+		fmt.Printf("Error - configure: %v", err)
+		return
+	}
+
+	fmt.Printf("starting crawl of: %s...\n", rawBaseURL)
+
+	cfg.wg.Add(1)
+	go cfg.crawlPage(rawBaseURL)
+	cfg.wg.Wait()
+
+	for normalizedURL := range cfg.pages {
+		fmt.Printf("found: %s\n", normalizedURL)
+	}
+	writeJSONReport(cfg.pages, "report.json")
 }
 
 func getHTML(rawURL string) (string, error) {
@@ -57,41 +87,4 @@ func getHTML(rawURL string) (string, error) {
 	}
 	htmlString := string(htmlBytes)
 	return htmlString, nil
-}
-
-func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
-	baseURL, err := url.Parse(rawBaseURL)
-	if err != nil {
-		return
-	}
-	currentURL, err := url.Parse(rawCurrentURL)
-	if err != nil {
-		return
-	}
-	if baseURL.Hostname() != currentURL.Hostname() {
-		return
-	}
-	normCurrentURL, err := normalizeURL(rawCurrentURL)
-	if err != nil {
-		return
-	}
-	_, exists := pages[normCurrentURL]
-	if exists {
-		pages[normCurrentURL] += 1
-		return
-	} else {
-		pages[normCurrentURL] = 1
-	}
-	html, err := getHTML(rawCurrentURL)
-	if err != nil {
-		return
-	}
-	fmt.Printf(html)
-	URLs, err := getURLsFromHTML(html, baseURL)
-	if err != nil {
-		return
-	}
-	for _, url := range URLs {
-		crawlPage(rawBaseURL, url, pages)
-	}
 }
